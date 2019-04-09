@@ -12,7 +12,7 @@ func main() {
 		panic(err)
 	}
 
-	logger := loggie.NewNamedLogger("example", loggie.Debug, loggie.NewStdLogger(), loggie.CombinedFileLogger(combined))
+	logger := loggie.NewNamedLogger("example", loggie.Debug, loggie.NewStdLogger(), loggie.NewCombinedFileLogger(combined))
 	logger.Debugf("example debug")
 	logger.Infof("example info")
 	logger.Warnf("example warn")
