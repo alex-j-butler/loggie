@@ -1,9 +1,18 @@
 package main
 
-import "alex-j-butler.com/loggie"
+import (
+	"os"
+
+	"alex-j-butler.com/loggie"
+)
 
 func main() {
-	logger := loggie.NewNamedLogger("example", loggie.StdLogger())
+	combined, err := os.OpenFile("combined.log", os.O_CREATE|os.O_APPEND, 0755)
+	if err != nil {
+		panic(err)
+	}
+
+	logger := loggie.NewNamedLogger("example", loggie.Debug, loggie.NewStdLogger(), loggie.CombinedFileLogger(combined))
 	logger.Debugf("example debug")
 	logger.Infof("example info")
 	logger.Warnf("example warn")

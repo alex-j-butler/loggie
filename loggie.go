@@ -6,15 +6,39 @@ import (
 	"time"
 )
 
+type LoggingOutput interface {
+	GetName() string
+	Output(level LogLevel, logString string) error
+}
+
+type LogFormatter interface {
+	GetName() string
+	Format(t time.Time, level LogLevel, logString string) string
+}
+
+// StdLogger is a logging output that prints log lines to stdout and stderr.
+type StdLogger struct {
+	// Whether the output should combine stderr and stdout and directly output to stdout.
+	// True = combine stderr and stdout
+	// DEPRECATED: Doesn't make sense for a stdout/stderr logger.
+	Combined bool
+}
+
+type FileLogger struct {
+	Stdout *os.File
+	Stderr *os.File
+}
+
 type LogLevel uint16
-type logOutput struct {
-	name   string
-	output func(level LogLevel, logStr string) error
+type LogOutput struct {
+	Name   string
+	Output func(level LogLevel, logStr string) error
 }
 type Logger struct {
 	Name      string
+	Level     LogLevel
 	ErrLogger ErrorLogger
-	outputs   []*logOutput
+	outputs   []*LogOutput
 }
 type ErrorLogger func(logStr string)
 
@@ -42,37 +66,66 @@ func DefaultErrorLogger() ErrorLogger {
 	}
 }
 
-func StdLogger() *logOutput {
-	return &logOutput{
-		name: "StdLogger",
-		output: func(level LogLevel, logStr string) error {
-			logLine := fmt.Sprintf("[%s %s] %s\n", time.Now().Format("02/Jan/2006:15:04:05 -0700"), LevelToString[level], logStr)
+func (l StdLogger) GetName() string {
+	return "StdLogger"
+}
 
-			if level <= Warn {
-				fmt.Fprintf(os.Stderr, logLine)
-			} else {
-				fmt.Fprintf(os.Stdout, logLine)
-			}
+func (l StdLogger) Output(logLevel LogLevel, logString string) error {
+	logLine := fmt.Sprintf("[%s %s] %s\n", time.Now().Format("02/Jan/2006:15:04:05 -0700"), LevelToString[logLevel], logString)
+
+	if logLevel <= Warn {
+		fmt.Fprintf(os.Stderr, logLine)
+	} else {
+		fmt.Fprintf(os.Stdout, logLine)
+	}
+	return nil
+}
+
+func NewStdLogger() *StdLogger {
+	return &StdLogger{
+		Combined: false,
+	}
+}
+
+func CombinedFileLogger(file *os.File) *LogOutput {
+	return &LogOutput{
+		Name: "CombinedFileLogger",
+		Output: func(level LogLevel, logStr string) error {
+			logLine := fmt.Sprintf("[%s %s] %s\n", time.Now().Format("02/Jan/2006:15:04:05 -0700"), LevelToString[level], logStr)
+			fmt.Fprintf(file, logLine)
+
 			return nil
 		},
 	}
 }
 
-func NewNamedLogger(name string, outputs ...*logOutput) *Logger {
+func NewNamedLogger(name string, logLevel LogLevel, outputs ...*LogOutput) *Logger {
 	return &Logger{
 		Name:      name,
+		Level:     logLevel,
+		ErrLogger: DefaultErrorLogger(),
+		outputs:   outputs,
+	}
+}
+
+func NewLogger(outputs ...*LogOutput) *Logger {
+	return &Logger{
 		ErrLogger: DefaultErrorLogger(),
 		outputs:   outputs,
 	}
 }
 
 func (logger *Logger) rawLog(level LogLevel, logStr string) (map[string]error, bool) {
+	if level > logger.Level {
+		return nil, false
+	}
+
 	hasError := false // Whether any of the logger outputs have failed.
 	errorMap := make(map[string]error)
 	for _, output := range logger.outputs {
-		if err := output.output(level, logStr); err != nil {
+		if err := output.Output(level, logStr); err != nil {
 			hasError = true
-			errorMap[output.name] = err
+			errorMap[output.Name] = err
 		}
 	}
 
